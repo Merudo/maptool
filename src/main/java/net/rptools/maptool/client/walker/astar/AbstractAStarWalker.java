@@ -31,12 +31,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.rptools.maptool.client.MapTool;
 import net.rptools.maptool.client.walker.AbstractZoneWalker;
-import net.rptools.maptool.model.CellPoint;
-import net.rptools.maptool.model.GUID;
-import net.rptools.maptool.model.Label;
-import net.rptools.maptool.model.Token;
-import net.rptools.maptool.model.TokenFootprint;
-import net.rptools.maptool.model.Zone;
+import net.rptools.maptool.model.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.locationtech.jts.awt.ShapeReader;
@@ -52,7 +47,7 @@ public abstract class AbstractAStarWalker extends AbstractZoneWalker {
   private List<GUID> debugLabels;
 
   private Area vbl = new Area();
-  private double normal_cost = 1; // zone.getUnitsPerCell();
+  private double cell_cost = zone.getUnitsPerCell();
   private double distance = -1;
 
   private final GeometryFactory geometryFactory = new GeometryFactory();
@@ -60,8 +55,7 @@ public abstract class AbstractAStarWalker extends AbstractZoneWalker {
   private Geometry vblGeometry = null;
   private TokenFootprint footprint = new TokenFootprint();
 
-  private Map<AStarCellPoint, AStarCellPoint> checkedList =
-      new ConcurrentHashMap<AStarCellPoint, AStarCellPoint>();
+  private Map<AStarCellPoint, AStarCellPoint> checkedList = new ConcurrentHashMap<>();
   private long avgRetrieveTime;
   private long avgTestTime;
   private long retrievalCount;
@@ -80,7 +74,9 @@ public abstract class AbstractAStarWalker extends AbstractZoneWalker {
       // log.info("Token: " + token.getName() + ", " + token.getTerrainModifier());
       Set<CellPoint> cells = token.getOccupiedCells(zone.getGrid());
       for (CellPoint cell : cells)
-        terrainCells.add(new AStarCellPoint(cell, token.getTerrainModifier()));
+        terrainCells.add(
+            new AStarCellPoint(
+                cell, token.getTerrainModifier(), token.getTerrainModifierOperation()));
     }
   }
 
@@ -284,7 +280,9 @@ public abstract class AbstractAStarWalker extends AbstractZoneWalker {
 
     // Find all the neighbors.
     for (int[] neighborArray : neighborMap) {
-      double terrainModifier = 0;
+      double terrainMultiplier = 0;
+      double terrainAdder = 0;
+      boolean terrainIsFree = false;
       boolean blockNode = false;
 
       AStarCellPoint neighbor =
@@ -313,21 +311,43 @@ public abstract class AbstractAStarWalker extends AbstractZoneWalker {
 
         // Check for terrain modifiers
         for (AStarCellPoint cell : terrainCells) {
-          if (cell.equals(neighbor)) {
-            terrainModifier += cell.terrainModifier;
-            // log.info("terrainModifier for " + cell + " = " + cell.terrainModifier);
+          if (cell.equals(neighbor)
+              && !terrainModifiersIgnored.contains(cell.terrainModifierOperation)) {
+            switch (cell.terrainModifierOperation) {
+              case MULTIPLY:
+                terrainMultiplier += cell.terrainModifier;
+                break;
+              case ADD:
+                terrainAdder += cell.terrainModifier;
+                break;
+              case BLOCK:
+                closedSet.add(cell);
+                blockNode = true;
+                continue;
+              case FREE:
+                terrainIsFree = true;
+                break;
+              case NONE:
+                break;
+            }
           }
         }
       }
 
+      if (blockNode) {
+        continue;
+      }
+
       // Tokens with no terrainModifier set would be a zero so multiplier is set to 1 in that case
-      if (terrainModifier == 0) terrainModifier = 1;
+      if (terrainMultiplier == 0) terrainMultiplier = 1;
+
+      terrainMultiplier = Math.abs(terrainMultiplier); // net negative multipliers screw with the AI
 
       // Get diagonal cost multiplier, if any...
       double diagonalMultiplier = getDiagonalMultiplier(neighborArray);
-      neighbor.distanceTraveled =
-          node.distanceTraveled + (normal_cost * terrainModifier * diagonalMultiplier);
-      neighbor.g = node.g + (normal_cost * terrainModifier * diagonalMultiplier);
+
+      neighbor.distanceTraveled = node.distanceTraveled + (terrainMultiplier * diagonalMultiplier);
+      neighbor.g = node.g + (cell_cost * terrainMultiplier * diagonalMultiplier);
 
       neighbors.add(neighbor);
       // log.info("neighbor.g: " + neighbor.getG());

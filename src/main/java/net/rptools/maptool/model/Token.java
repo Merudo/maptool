@@ -28,6 +28,7 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -146,6 +147,8 @@ public class Token extends BaseModel implements Cloneable {
     setIsAlwaysVisible,
     setTokenOpacity,
     setTerrainModifier,
+    setTerrainModifierOperation,
+    setTerrainModifiersIgnored,
     setVBL,
     setImageAsset,
     setPortraitImage,
@@ -234,8 +237,20 @@ public class Token extends BaseModel implements Cloneable {
   // Jamz: allow token alpha channel modification
   private float tokenOpacity = 1.0f;
 
+  /** Terrain Modifier Operations */
+  public enum TerrainModifierOperation {
+    NONE, // Default, no terrain modifications to pathfinding cost
+    MULTIPLY, // All tokens with this type are added together and multiplied against the Cell cost
+    ADD, // All tokens with this type are added together and added to the cell cost
+    BLOCK, // Movement through tokens with this type are blocked just as if they had VBL
+    FREE // Any cell with a token of this type in it has ALL movement costs removed
+  }
+
   // Jamz: modifies A* cost of other tokens
   private double terrainModifier = 1;
+  private TerrainModifierOperation terrainModifierOperation = TerrainModifierOperation.NONE;
+  private Set<TerrainModifierOperation> terrainModifiersIgnored =
+      new HashSet<>(Arrays.asList(TerrainModifierOperation.NONE));
 
   private boolean isFlippedX;
   private boolean isFlippedY;
@@ -419,6 +434,11 @@ public class Token extends BaseModel implements Cloneable {
     heroLabData = token.heroLabData;
     tokenOpacity = token.tokenOpacity;
     terrainModifier = token.terrainModifier;
+    terrainModifierOperation = token.terrainModifierOperation;
+
+    if (token.terrainModifiersIgnored != null) {
+      terrainModifiersIgnored = new HashSet<>(token.terrainModifiersIgnored);
+    }
   }
 
   public Token() {
@@ -632,6 +652,46 @@ public class Token extends BaseModel implements Cloneable {
     else terrainModifier = 1.0f;
 
     return terrainModifier;
+  }
+
+  public TerrainModifierOperation getTerrainModifierOperation() {
+    // This should only happen on existing campaigns. For those tokens,
+    // the default was a multiplier of 1.0f so we will set those to 0 and operation NONE
+    if (terrainModifierOperation == null) {
+      if (terrainModifier != 1) {
+        terrainModifierOperation = TerrainModifierOperation.MULTIPLY;
+      } else {
+        terrainModifier = 0.0d;
+        terrainModifierOperation = TerrainModifierOperation.NONE;
+      }
+    }
+
+    return terrainModifierOperation;
+  }
+
+  public void setTerrainModifierOperation(TerrainModifierOperation terrainModifierOperation) {
+    this.terrainModifierOperation = terrainModifierOperation;
+  }
+
+  public Set<TerrainModifierOperation> getTerrainModifiersIgnored() {
+    if (terrainModifiersIgnored == null) {
+      terrainModifiersIgnored = new HashSet<>();
+    }
+
+    if (terrainModifiersIgnored.isEmpty()) {
+      terrainModifiersIgnored.add(TerrainModifierOperation.NONE);
+    }
+
+    return terrainModifiersIgnored;
+  }
+
+  public void setTerrainModifiersIgnored(Set<TerrainModifierOperation> terrainModifiersIgnored) {
+    this.terrainModifiersIgnored = terrainModifiersIgnored;
+
+    if (this.terrainModifiersIgnored.contains(TerrainModifierOperation.NONE)) {
+      terrainModifiersIgnored.clear();
+      this.terrainModifiersIgnored.add(TerrainModifierOperation.NONE);
+    }
   }
 
   public boolean isObjectStamp() {
@@ -2252,6 +2312,12 @@ public class Token extends BaseModel implements Cloneable {
         break;
       case setTerrainModifier:
         setTerrainModifier((double) parameters[0]);
+        break;
+      case setTerrainModifierOperation:
+        setTerrainModifierOperation((TerrainModifierOperation) parameters[0]);
+        break;
+      case setTerrainModifiersIgnored:
+        setTerrainModifiersIgnored((Set<TerrainModifierOperation>) parameters[0]);
         break;
       case setVBL:
         setVBL((Area) parameters[0]);
