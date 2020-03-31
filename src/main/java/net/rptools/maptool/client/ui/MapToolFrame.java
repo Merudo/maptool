@@ -16,18 +16,7 @@ package net.rptools.maptool.client.ui;
 
 import com.jidesoft.docking.DefaultDockableHolder;
 import com.jidesoft.docking.DockableFrame;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Desktop;
-import java.awt.EventQueue;
-import java.awt.GraphicsConfiguration;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.GridLayout;
-import java.awt.IllegalComponentStateException;
-import java.awt.Image;
-import java.awt.Rectangle;
+import java.awt.*;
 import java.awt.desktop.AboutEvent;
 import java.awt.desktop.AboutHandler;
 import java.awt.desktop.PreferencesEvent;
@@ -35,48 +24,15 @@ import java.awt.desktop.PreferencesHandler;
 import java.awt.desktop.QuitEvent;
 import java.awt.desktop.QuitHandler;
 import java.awt.desktop.QuitResponse;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.WindowEvent;
-import java.awt.event.WindowListener;
+import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Observable;
-import java.util.Observer;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-import javax.swing.AbstractAction;
-import javax.swing.ActionMap;
-import javax.swing.BorderFactory;
-import javax.swing.Icon;
-import javax.swing.ImageIcon;
-import javax.swing.InputMap;
-import javax.swing.JComponent;
-import javax.swing.JFileChooser;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JLayeredPane;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
-import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
-import javax.swing.JTree;
-import javax.swing.KeyStroke;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.Timer;
 import javax.swing.border.BevelBorder;
 import javax.swing.event.TreeSelectionEvent;
@@ -190,6 +146,7 @@ public class MapToolFrame extends DefaultDockableHolder
   private final ToolbarPanel toolbarPanel;
   private final ZoneMiniMapPanel zoneMiniMapPanel;
   private final JPanel zoneRendererPanel;
+  private final JLayeredPane zoneRenderLayered;
   private JPanel visibleControlPanel;
   private FullScreenFrame fullScreenFrame;
   private final JPanel rendererBorderPanel;
@@ -254,6 +211,10 @@ public class MapToolFrame extends DefaultDockableHolder
   private final ImpersonatePanel impersonatePanel = new ImpersonatePanel();
 
   private final DragImageGlassPane dragImageGlassPane = new DragImageGlassPane();
+
+  public JLayeredPane getZoneRenderLayered() {
+    return zoneRenderLayered;
+  }
 
   private final class KeyListenerDeleteDraw implements KeyListener {
     private final JTree tree;
@@ -434,6 +395,129 @@ public class MapToolFrame extends DefaultDockableHolder
     }
   }
 
+  public static class LayeredLayoutLocation {
+    private int xOffset;
+    private int yOffset;
+    private LayeredLayoutHorizontal borderH;
+    private LayeredLayoutVertical borderV;
+
+    public LayeredLayoutLocation(
+        int x, int y, LayeredLayoutHorizontal borderH, LayeredLayoutVertical borderV) {
+      this.xOffset = x;
+      this.yOffset = y;
+      this.borderH = borderH;
+      this.borderV = borderV;
+    }
+  }
+
+  public enum LayeredLayoutHorizontal {
+    EAST,
+    WEST,
+    CENTER
+  }
+
+  public enum LayeredLayoutVertical {
+    NORTH,
+    SOUTH,
+    CENTER
+  }
+
+  public static class LayeredPaneLayout implements LayoutManager2 {
+    public static final int ZONE_RENDERER_LAYER = 0;
+    public static final int OVERLAY_LAYER = 300;
+
+    protected Hashtable<Component, LayeredLayoutLocation> locations = new Hashtable<>();
+
+    @Override
+    public void addLayoutComponent(final String name, final Component comp) {}
+
+    @Override
+    public void addLayoutComponent(Component comp, Object constraints) {
+      if (constraints == null) {
+        constraints =
+            new LayeredLayoutLocation(
+                0, 0, LayeredLayoutHorizontal.CENTER, LayeredLayoutVertical.CENTER);
+      }
+      locations.put(comp, (LayeredLayoutLocation) constraints);
+    }
+
+    @Override
+    public void layoutContainer(final Container container) {
+      if (container instanceof JLayeredPane) {
+        JLayeredPane layeredPane = (JLayeredPane) container;
+        for (Component comp : layeredPane.getComponentsInLayer(ZONE_RENDERER_LAYER)) {
+          comp.setBounds(0, 0, layeredPane.getWidth(), layeredPane.getHeight());
+        }
+        for (Component c : layeredPane.getComponentsInLayer(OVERLAY_LAYER)) {
+          int newX = getNewX(c, container.getWidth());
+          int newY = getNewY(c, container.getHeight());
+          c.setBounds(newX, newY, c.getPreferredSize().width, c.getPreferredSize().height);
+        }
+      }
+    }
+
+    private int getNewX(Component c, int totalWidth) {
+      LayeredLayoutLocation location = locations.get(c);
+      LayeredLayoutHorizontal borderH =
+          location == null ? LayeredLayoutHorizontal.CENTER : location.borderH;
+      int xOffset = location == null ? 0 : location.xOffset;
+
+      if (borderH == LayeredLayoutHorizontal.CENTER) {
+        return totalWidth / 2 - c.getPreferredSize().width / 2 + xOffset;
+      } else if (borderH == LayeredLayoutHorizontal.EAST) {
+        return xOffset;
+      } else {
+        return totalWidth - c.getPreferredSize().width + xOffset;
+      }
+    }
+
+    private int getNewY(Component c, int totalHeight) {
+      LayeredLayoutLocation location = locations.get(c);
+      LayeredLayoutVertical borderV =
+          location == null ? LayeredLayoutVertical.CENTER : location.borderV;
+      int yOffset = location == null ? 0 : location.yOffset;
+
+      if (borderV == LayeredLayoutVertical.CENTER) {
+        return totalHeight / 2 - c.getPreferredSize().height / 2 + yOffset;
+      } else if (borderV == LayeredLayoutVertical.NORTH) {
+        return yOffset;
+      } else {
+        return totalHeight - c.getPreferredSize().height + yOffset;
+      }
+    }
+
+    @Override
+    public Dimension minimumLayoutSize(final Container parent) {
+      return preferredLayoutSize(parent);
+    }
+
+    @Override
+    public Dimension preferredLayoutSize(final Container parent) {
+      return parent.getSize();
+    }
+
+    @Override
+    public void removeLayoutComponent(final Component comp) {}
+
+    @Override
+    public Dimension maximumLayoutSize(Container target) {
+      return null;
+    }
+
+    @Override
+    public float getLayoutAlignmentX(Container target) {
+      return 0;
+    }
+
+    @Override
+    public float getLayoutAlignmentY(Container target) {
+      return 0;
+    }
+
+    @Override
+    public void invalidateLayout(Container target) {}
+  }
+
   public MapToolFrame(JMenuBar menuBar) {
     // Set up the frame
     super(AppConstants.APP_NAME);
@@ -512,9 +596,14 @@ public class MapToolFrame extends DefaultDockableHolder
     commandPanel = new CommandPanel();
     MapTool.getMessageList().addObserver(commandPanel);
 
+    zoneRenderLayered = new JLayeredPane();
+    zoneRenderLayered.setLayout(new LayeredPaneLayout());
+    zoneRenderLayered.setLayer(zoneRendererPanel, LayeredPaneLayout.ZONE_RENDERER_LAYER);
+    zoneRenderLayered.add(zoneRendererPanel);
+
     rendererBorderPanel = new JPanel(new GridLayout());
     rendererBorderPanel.setBorder(BorderFactory.createLineBorder(Color.darkGray));
-    rendererBorderPanel.add(zoneRendererPanel);
+    rendererBorderPanel.add(zoneRenderLayered);
     toolbarPanel = new ToolbarPanel(toolbox);
 
     // Put it all together

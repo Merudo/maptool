@@ -20,6 +20,7 @@ import java.util.Set;
 import net.rptools.lib.AppEvent;
 import net.rptools.lib.AppEventListener;
 import net.rptools.maptool.client.MapTool;
+import net.rptools.maptool.client.ui.MapToolFrame;
 import net.rptools.maptool.client.ui.commandpanel.CommandPanel;
 import net.rptools.maptool.model.*;
 import net.rptools.maptool.model.Zone.Event;
@@ -27,19 +28,25 @@ import net.rptools.maptool.model.Zone.Event;
 public class HTMLFrameFactory {
   private HTMLFrameFactory() {}
 
+  public enum FrameType {
+    FRAME,
+    DIALOG,
+    OVERLAY
+  }
+
   private static HTMLFrameFactory.Listener listener;
 
   /**
    * Shows a dialog or frame based on the options.
    *
    * @param name The name of the dialog or frame.
-   * @param isFrame Is it a frame.
+   * @param frameType Type of the frame.
    * @param isHTML5 Does it use HTML5 (JavaFX) or HTML 3.2 (Swing).
    * @param properties The properties that determine the attributes of the frame or dialog.
    * @param html The html contents of frame or dialog.
    */
   public static void show(
-      String name, boolean isFrame, boolean isHTML5, String properties, String html) {
+      String name, FrameType frameType, boolean isHTML5, String properties, String html) {
     if (listener == null) {
       listener = new HTMLFrameFactory.Listener();
     }
@@ -47,6 +54,11 @@ public class HTMLFrameFactory {
     boolean temporary = false;
     int width = -1;
     int height = -1;
+    int xOffset = 0;
+    int yOffset = 0;
+    MapToolFrame.LayeredLayoutHorizontal borderH = MapToolFrame.LayeredLayoutHorizontal.CENTER;
+    MapToolFrame.LayeredLayoutVertical borderV = MapToolFrame.LayeredLayoutVertical.CENTER;
+
     String title = name;
     String tabTitle = null;
     Object frameValue = null;
@@ -93,6 +105,30 @@ public class HTMLFrameFactory {
           } catch (NumberFormatException e) {
             // Ignoring the value; shouldn't we warn the user?
           }
+        } else if (keyLC.equals("xoffset")) {
+          try {
+            xOffset = Integer.parseInt(value);
+          } catch (NumberFormatException e) {
+            // Ignoring the value; shouldn't we warn the user?
+          }
+        } else if (keyLC.equals("yoffset")) {
+          try {
+            yOffset = Integer.parseInt(value);
+          } catch (NumberFormatException e) {
+            // Ignoring the value; shouldn't we warn the user?
+          }
+        } else if (keyLC.equals("halign")) {
+          if ("left".equals(value)) {
+            borderH = MapToolFrame.LayeredLayoutHorizontal.EAST;
+          } else if ("right".equals(value)) {
+            borderH = MapToolFrame.LayeredLayoutHorizontal.WEST;
+          }
+        } else if (keyLC.equals("valign")) {
+          if ("top".equals(value)) {
+            borderV = MapToolFrame.LayeredLayoutVertical.NORTH;
+          } else if ("bottom".equals(value)) {
+            borderV = MapToolFrame.LayeredLayoutVertical.SOUTH;
+          }
         } else if (keyLC.equals("title")) {
           title = value;
         } else if (keyLC.equals("noframe")) {
@@ -121,10 +157,10 @@ public class HTMLFrameFactory {
       }
     }
     if (tabTitle == null) tabTitle = title; // if tabTitle not set, make it same as title
-    if (isFrame) {
+    if (frameType == FrameType.FRAME) {
       HTMLFrame.showFrame(
           name, title, tabTitle, width, height, temporary, isHTML5, frameValue, html);
-    } else {
+    } else if (frameType == FrameType.DIALOG) {
       HTMLDialog.showDialog(
           name,
           title,
@@ -137,6 +173,9 @@ public class HTMLFrameFactory {
           isHTML5,
           frameValue,
           html);
+    } else if (frameType == FrameType.OVERLAY) {
+      HTMLOverlay.showOverlay(
+          name, width, height, xOffset, yOffset, borderH, borderV, frameValue, html);
     }
   }
 

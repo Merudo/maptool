@@ -209,6 +209,7 @@ public class MapToolLineParser {
   private enum OutputLoc { // Mutually exclusive output location
     CHAT,
     DIALOG,
+    OVERLAY,
     DIALOG5,
     FRAME,
     FRAME5
@@ -357,6 +358,8 @@ public class MapToolLineParser {
     DIALOG5("dialog5", 1, 2, "\"\""),
     // HTML webView
     FRAME5("frame5", 1, 2, "\"\""),
+    // HTML overlay
+    OVERLAY("overlay", 1, 2, "\"\""),
     // Run for another token
     TOKEN("token", 1, 1);
 
@@ -1028,6 +1031,12 @@ public class MapToolLineParser {
                   frameOpts = option.getParsedParam(1, resolver, tokenInContext).toString();
                   outputTo = OutputLoc.FRAME5;
                   break;
+                case OVERLAY:
+                  codeType = CodeType.CODEBLOCK;
+                  frameName = option.getParsedParam(0, resolver, tokenInContext).toString();
+                  frameOpts = option.getParsedParam(1, resolver, tokenInContext).toString();
+                  outputTo = OutputLoc.OVERLAY;
+                  break;
                   ///////////////////////////////////////////////////
                   // CODE OPTIONS
                   ///////////////////////////////////////////////////
@@ -1418,21 +1427,46 @@ public class MapToolLineParser {
           switch (outputTo) {
             case FRAME:
               HTMLFrameFactory.show(
-                  frameName, true, false, frameOpts, expressionBuilder.toString());
+                  frameName,
+                  HTMLFrameFactory.FrameType.FRAME,
+                  false,
+                  frameOpts,
+                  expressionBuilder.toString());
               break;
             case DIALOG:
               HTMLFrameFactory.show(
-                  frameName, false, false, frameOpts, expressionBuilder.toString());
+                  frameName,
+                  HTMLFrameFactory.FrameType.DIALOG,
+                  false,
+                  frameOpts,
+                  expressionBuilder.toString());
+              break;
+            case OVERLAY:
+              HTMLFrameFactory.show(
+                  frameName,
+                  HTMLFrameFactory.FrameType.OVERLAY,
+                  false,
+                  frameOpts,
+                  expressionBuilder.toString());
               break;
             case CHAT:
               builder.append(expressionBuilder);
               break;
             case FRAME5:
-              HTMLFrameFactory.show(frameName, true, true, frameOpts, expressionBuilder.toString());
+              HTMLFrameFactory.show(
+                  frameName,
+                  HTMLFrameFactory.FrameType.FRAME,
+                  true,
+                  frameOpts,
+                  expressionBuilder.toString());
               break;
             case DIALOG5:
               HTMLFrameFactory.show(
-                  frameName, false, true, frameOpts, expressionBuilder.toString());
+                  frameName,
+                  HTMLFrameFactory.FrameType.DIALOG,
+                  true,
+                  frameOpts,
+                  expressionBuilder.toString());
               break;
           }
 

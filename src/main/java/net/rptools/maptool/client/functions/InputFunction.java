@@ -482,7 +482,7 @@ public class InputFunction extends AbstractFunction {
 
       if (m.find()) {
         // For HTML values we use a HTMLPane.
-        HTMLPane htmlp = new HTMLPane();
+        HTMLPane htmlp = new HTMLPane(false);
         htmlp.setText("<html>" + m.group(1) + ":</html>");
         htmlp.setBackground(Color.decode("0xECE9D8"));
         l = htmlp;
@@ -743,7 +743,7 @@ public class InputFunction extends AbstractFunction {
       // If the string starts with "<html>" then Swing will consider it HTML...
       if (hasText && vs.value.matches("^\\s*<html>")) {
         // For HTML values we use a HTMLPane.
-        HTMLPane htmlp = new HTMLPane();
+        HTMLPane htmlp = new HTMLPane(false);
         htmlp.setText(vs.value);
         htmlp.setBackground(Color.decode("0xECE9D8"));
         return htmlp;

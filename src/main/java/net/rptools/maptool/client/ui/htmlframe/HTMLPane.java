@@ -15,35 +15,52 @@
 package net.rptools.maptool.client.ui.htmlframe;
 
 import java.awt.*;
-import java.awt.event.ActionListener;
+import java.awt.dnd.DropTargetDragEvent;
+import java.awt.dnd.DropTargetDropEvent;
+import java.awt.dnd.DropTargetEvent;
+import java.awt.dnd.DropTargetListener;
+import java.awt.event.*;
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.Enumeration;
+import java.util.*;
 import java.util.List;
-import java.util.Stack;
-import java.util.regex.Matcher;
 import javax.swing.*;
-import javax.swing.event.HyperlinkEvent;
-import javax.swing.event.HyperlinkListener;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.Element;
 import javax.swing.text.MutableAttributeSet;
+import javax.swing.text.Position;
 import javax.swing.text.html.HTML;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.StyleSheet;
 import net.rptools.maptool.client.AppPreferences;
 import net.rptools.maptool.client.MapTool;
+import net.rptools.maptool.client.ScreenPoint;
+import net.rptools.maptool.client.TransferableHelper;
 import net.rptools.maptool.client.functions.MacroLinkFunction;
-import net.rptools.maptool.client.ui.commandpanel.MessagePanel;
+import net.rptools.maptool.client.swing.MessagePanelEditorKit;
+import net.rptools.maptool.client.ui.zone.ZoneRenderer;
+import net.rptools.maptool.model.Token;
+import net.rptools.maptool.model.ZonePoint;
 import net.rptools.parser.ParserException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /** Represents the panel holding the HTMLPaneEditorKit for HTML3.2. */
 @SuppressWarnings("serial")
-public class HTMLPane extends JEditorPane {
+public class HTMLPane extends JEditorPane implements HTMLPanelInterface, DropTargetListener {
   /** The logger. */
   private static final Logger log = LogManager.getLogger(HTMLPane.class);
+
+  private static final String CSS_RULE_BODY =
+      "body { font-family: sans-serif; font-size: %dpt; background: %s;}";
+  private static final String CSS_RULE_DIV = "div {margin-bottom: 5px}";
+  private static final String CSS_RULE_SPAN = "span.roll {background:#efefef}";
+
+  private static final String CSS_COLOR_DEFAULT = "#ECE9D8";
+  private static final String CSS_COLOR_NONE = "none";
+
+  private final boolean isOverlay;
 
   /** The action listeners for the container. */
   private ActionListener actionListeners;
@@ -51,37 +68,134 @@ public class HTMLPane extends JEditorPane {
   /** The editorKit that handles the HTML. */
   private final HTMLPaneEditorKit editorKit;
 
-  public HTMLPane() {
+  @Override
+  public void dragEnter(DropTargetDragEvent dtde) {}
+
+  @Override
+  public void dragOver(DropTargetDragEvent dtde) {}
+
+  @Override
+  public void dropActionChanged(DropTargetDragEvent dtde) {}
+
+  @Override
+  public void dragExit(DropTargetEvent dte) {}
+
+  @Override
+  public void drop(DropTargetDropEvent dtde) {
+    ZoneRenderer zr = MapTool.getFrame().getCurrentZoneRenderer();
+    Point point = SwingUtilities.convertPoint(this, dtde.getLocation(), zr);
+
+    ZonePoint zp = new ScreenPoint((int) point.getX(), (int) point.getY()).convertToZone(zr);
+    TransferableHelper th = (TransferableHelper) getTransferHandler();
+    List<Token> tokens = th.getTokens();
+    if (tokens != null && !tokens.isEmpty()) {
+      zr.addTokens(tokens, zp, th.getConfigureTokens(), false);
+    }
+  }
+
+  /** Replacement for the HyperlinkListener, to better handle hyperlink clicks. */
+  private final class HyperlinkMouseListener extends MouseAdapter {
+    @Override
+    public void mouseReleased(MouseEvent e) {
+      // Triggered by a  mouse button release, which is much more lenient than a mouse click
+      Element h = getHyperlinkElement(e);
+      if (h != null && e.getButton() == MouseEvent.BUTTON1) {
+        Object attribute = h.getAttributes().getAttribute(HTML.Tag.A);
+        if (attribute instanceof AttributeSet) {
+          AttributeSet set = (AttributeSet) attribute;
+          String href = (String) set.getAttribute(HTML.Attribute.HREF);
+          if (href != null) {
+            String href2 = href.trim().toLowerCase();
+            if (href2.startsWith("macro")) {
+              // run as macroLink;
+              SwingUtilities.invokeLater(() -> MacroLinkFunction.runMacroLink(href));
+            } else if (href2.startsWith("#")) {
+              scrollToReference(href.substring(1)); // scroll to the anchor
+              setCursor(editorKit.getDefaultCursor()); // replace cursor, or it will stay as a hand
+            } else if (!href2.startsWith("javascript")) {
+              // non-macrolink, non-anchor link, non-javascript code
+              MapTool.showDocument(href); // show in usual browser
+            }
+          }
+        }
+      }
+    }
+    /**
+     * Returns the hyperlink element from a mouse event.
+     *
+     * @param event the mouse event triggering the hyperlink
+     * @return the document element corresponding to the link
+     */
+    private Element getHyperlinkElement(MouseEvent event) {
+      JEditorPane editor = (JEditorPane) event.getSource();
+      int pos = editor.getUI().viewToModel2D(editor, event.getPoint(), new Position.Bias[1]);
+      if (pos >= 0 && editor.getDocument() instanceof HTMLDocument) {
+        HTMLDocument hdoc = (HTMLDocument) editor.getDocument();
+        Element elem = hdoc.getCharacterElement(pos);
+        if (elem.getAttributes().getAttribute(HTML.Tag.A) != null) {
+          return elem;
+        }
+      }
+      return null;
+    }
+  }
+
+  public HTMLPane(boolean isOverlay) {
     editorKit = new HTMLPaneEditorKit(this);
     setEditorKit(editorKit);
     setContentType("text/html");
     setEditable(false);
+    this.isOverlay = isOverlay;
 
-    addHyperlinkListener(
-        new HyperlinkListener() {
-          public void hyperlinkUpdate(HyperlinkEvent e) {
-            if (log.isDebugEnabled()) {
-              log.debug(
-                  "Responding to hyperlink event: "
-                      + e.getEventType().toString()
-                      + " "
-                      + e.toString());
-            }
-            if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
-              if (e.getURL() != null) {
-                MapTool.showDocument(e.getURL().toString());
-              } else {
-                Matcher m = MessagePanel.URL_PATTERN.matcher(e.getDescription());
-                if (m.matches()) {
-                  if (m.group(1).equalsIgnoreCase("macro")) {
-                    MacroLinkFunction.runMacroLink(e.getDescription());
-                  }
-                }
-              }
-            }
+    if (isOverlay) {
+      setFocusable(false);
+      setHighlighter(null);
+      setOpaque(false);
+      addMouseListeners();
+    }
+
+    addMouseListener(new HyperlinkMouseListener());
+    ToolTipManager.sharedInstance().registerComponent(this);
+
+    setTransferHandler(new TransferableHelper());
+    setCaretColor(new Color(0, 0, 0, 0)); // invisible, needed or it shows in DnD operations
+    try {
+      getDropTarget().addDropTargetListener(this);
+    } catch (TooManyListenersException e1) {
+      // Should never happen because the transfer handler fixes this problem.
+    }
+  }
+
+  @Override
+  public void updateContents(String html) {
+    EventQueue.invokeLater(
+        new Runnable() {
+          public void run() {
+            ((MessagePanelEditorKit) getEditorKit()).flush();
+            setText(html);
+            setCaretPosition(0);
           }
         });
-    ToolTipManager.sharedInstance().registerComponent(this);
+  }
+
+  @Override
+  public void flush() {
+    EventQueue.invokeLater(
+        new Runnable() {
+          public void run() {
+            ((MessagePanelEditorKit) getEditorKit()).flush();
+          }
+        });
+  }
+
+  @Override
+  public void addToContainer(HTMLPanelContainer container) {
+    container.add(this);
+  }
+
+  @Override
+  public void removeFromContainer(HTMLPanelContainer container) {
+    container.remove(this);
   }
 
   public void addActionListener(ActionListener listener) {
@@ -178,11 +292,12 @@ public class HTMLPane extends JEditorPane {
       }
 
       style.addRule(
-          "body { font-family: sans-serif; font-size: "
-              + AppPreferences.getFontSize()
-              + "pt; background: #ECE9D8}");
-      style.addRule("div {margin-bottom: 5px}");
-      style.addRule("span.roll {background:#efefef}");
+          String.format(
+              CSS_RULE_BODY,
+              AppPreferences.getFontSize(),
+              isOverlay ? CSS_COLOR_NONE : CSS_COLOR_DEFAULT));
+      style.addRule(CSS_RULE_DIV);
+      style.addRule(CSS_RULE_SPAN);
       parse.parse(new StringReader(text), new ParserCallBack(), true);
     } catch (IOException e) {
       // Do nothing, we should not get an io exception on string
@@ -286,5 +401,68 @@ public class HTMLPane extends JEditorPane {
         }
       }
     }
+  }
+
+  private void passMouseEvent(MouseEvent e) {
+    SwingUtilities.invokeLater(
+        () -> {
+          Component c = MapTool.getFrame().getCurrentZoneRenderer();
+          c.dispatchEvent(SwingUtilities.convertMouseEvent(e.getComponent(), e, c));
+        });
+  }
+
+  private void addMouseListeners() {
+    addMouseMotionListener(
+        new MouseMotionAdapter() {
+          @Override
+          public void mouseMoved(MouseEvent e) {
+            passMouseEvent(e);
+          }
+
+          @Override
+          public void mouseDragged(MouseEvent e) {
+            passMouseEvent(e);
+          }
+        });
+    addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mouseEntered(MouseEvent e) {
+            // pane.setCursor(MapTool.getFrame().getCurrentZoneRenderer().getCursor());
+            passMouseEvent(e);
+          }
+
+          @Override
+          public void mousePressed(MouseEvent e) {
+            passMouseEvent(e);
+          }
+
+          @Override
+          public void mouseClicked(MouseEvent e) {
+            passMouseEvent(e);
+          }
+
+          @Override
+          public void mouseReleased(MouseEvent e) {
+            passMouseEvent(e);
+          }
+
+          @Override
+          public void mouseExited(MouseEvent e) {
+            passMouseEvent(e);
+          }
+        });
+    addMouseWheelListener(
+        new MouseWheelListener() {
+          @Override
+          public void mouseWheelMoved(MouseWheelEvent event) {
+            passMouseEvent(event);
+          }
+        });
+  }
+
+  @Override
+  protected void processMouseEvent(MouseEvent e) {
+    super.processMouseEvent(e);
   }
 }

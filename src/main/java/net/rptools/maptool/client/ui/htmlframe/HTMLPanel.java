@@ -15,7 +15,6 @@
 package net.rptools.maptool.client.ui.htmlframe;
 
 import java.awt.BorderLayout;
-import java.awt.EventQueue;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
@@ -24,14 +23,13 @@ import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
-import net.rptools.maptool.client.swing.MessagePanelEditorKit;
 
 /** Represents the JPanel holding the HTML pane. */
 public class HTMLPanel extends JPanel implements HTMLPanelInterface {
   private static final long serialVersionUID = -2574631956909778786L;
 
   /** The HTMLPane holding the HTML content. */
-  private final HTMLPane pane = new HTMLPane();
+  private final HTMLPane pane = new HTMLPane(true);
 
   /**
    * Creates a new HTMLPanel.
@@ -39,7 +37,7 @@ public class HTMLPanel extends JPanel implements HTMLPanelInterface {
    * @param container The container that will hold the HTML panel
    * @param scrollBar whether panel have scroll bars or not
    */
-  HTMLPanel(final HTMLPanelContainer container, boolean scrollBar) {
+  public HTMLPanel(final HTMLPanelContainer container, boolean scrollBar) {
     setLayout(new BorderLayout());
 
     if (scrollBar) {
@@ -69,25 +67,13 @@ public class HTMLPanel extends JPanel implements HTMLPanelInterface {
    */
   @Override
   public void updateContents(final String html) {
-    EventQueue.invokeLater(
-        new Runnable() {
-          public void run() {
-            ((MessagePanelEditorKit) pane.getEditorKit()).flush();
-            pane.setText(html);
-            pane.setCaretPosition(0);
-          }
-        });
+    pane.updateContents(html);
   }
 
   /** Flushes any caching for the panel. */
   @Override
   public void flush() {
-    EventQueue.invokeLater(
-        new Runnable() {
-          public void run() {
-            ((MessagePanelEditorKit) pane.getEditorKit()).flush();
-          }
-        });
+    pane.flush();
   }
 
   /**

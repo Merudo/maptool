@@ -14,25 +14,7 @@
  */
 package net.rptools.maptool.client.ui.zone;
 
-import java.awt.AlphaComposite;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.Image;
-import java.awt.Paint;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.RenderingHints;
-import java.awt.Shape;
-import java.awt.Stroke;
-import java.awt.TexturePaint;
-import java.awt.Toolkit;
-import java.awt.Transparency;
+import java.awt.*;
 import java.awt.dnd.DropTargetDragEvent;
 import java.awt.dnd.DropTargetDropEvent;
 import java.awt.dnd.DropTargetEvent;
@@ -98,6 +80,7 @@ import net.rptools.maptool.client.tool.drawing.FreehandExposeTool;
 import net.rptools.maptool.client.tool.drawing.OvalExposeTool;
 import net.rptools.maptool.client.tool.drawing.PolygonExposeTool;
 import net.rptools.maptool.client.tool.drawing.RectangleExposeTool;
+import net.rptools.maptool.client.ui.MapToolFrame;
 import net.rptools.maptool.client.ui.Scale;
 import net.rptools.maptool.client.ui.Tool;
 import net.rptools.maptool.client.ui.htmlframe.HTMLFrameFactory;
@@ -207,6 +190,8 @@ public class ZoneRenderer extends JComponent
   private String loadingProgress;
   private boolean isLoaded;
   private BufferedImage fogBuffer;
+
+  private final TransferableHelper transferableHelper;
   /**
    * I don't like this, at all, but it'll work for now, basically keep track of when the fog cache
    * needs to be flushed in the case of switching views
@@ -267,7 +252,8 @@ public class ZoneRenderer extends JComponent
     // add(MapTool.getFrame().getFxPanel(), PositionalLayout.Position.NW);
 
     // DnD
-    setTransferHandler(new TransferableHelper());
+    transferableHelper = new TransferableHelper();
+    setTransferHandler(transferableHelper);
     try {
       getDropTarget().addDropTargetListener(this);
     } catch (TooManyListenersException e1) {
@@ -315,6 +301,10 @@ public class ZoneRenderer extends JComponent
     } else {
       showPathList.remove(token);
     }
+  }
+
+  public TransferableHelper getTransferableHelper() {
+    return transferableHelper;
   }
 
   public void centerOn(Token token) {
@@ -4539,7 +4529,7 @@ public class ZoneRenderer extends JComponent
    */
   public void dragOver(DropTargetDragEvent dtde) {}
 
-  private void addTokens(
+  public void addTokens(
       List<Token> tokens, ZonePoint zp, List<Boolean> configureTokens, boolean showDialog) {
     GridCapabilities gridCaps = zone.getGrid().getCapabilities();
     boolean isGM = MapTool.getPlayer().isGM();
@@ -4739,6 +4729,7 @@ public class ZoneRenderer extends JComponent
    *
    * @see java.awt.dnd.DropTargetListener#drop (java.awt.dnd.DropTargetDropEvent)
    */
+  @Override
   public void drop(DropTargetDropEvent dtde) {
     ZonePoint zp =
         new ScreenPoint((int) dtde.getLocation().getX(), (int) dtde.getLocation().getY())
@@ -4861,6 +4852,12 @@ public class ZoneRenderer extends JComponent
       cursor = custom;
     }
     super.setCursor(cursor);
+    for (Component c :
+        MapTool.getFrame()
+            .getZoneRenderLayered()
+            .getComponentsInLayer(MapToolFrame.LayeredPaneLayout.OVERLAY_LAYER)) {
+      c.setCursor(cursor);
+    }
   }
 
   private Cursor custom = null;
