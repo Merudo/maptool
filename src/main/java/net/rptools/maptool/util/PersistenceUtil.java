@@ -20,24 +20,15 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import javax.imageio.ImageIO;
 import net.rptools.lib.CodeTimer;
 import net.rptools.lib.FileUtil;
@@ -45,6 +36,7 @@ import net.rptools.lib.MD5Key;
 import net.rptools.lib.ModelVersionManager;
 import net.rptools.lib.image.ImageUtil;
 import net.rptools.lib.io.PackedFile;
+import net.rptools.lib.net.Location;
 import net.rptools.lib.swing.SwingUtil;
 import net.rptools.maptool.client.AppConstants;
 import net.rptools.maptool.client.AppUtil;
@@ -75,10 +67,28 @@ import org.apache.logging.log4j.Logger;
 public class PersistenceUtil {
   private static final Logger log = LogManager.getLogger(PersistenceUtil.class);
 
+  private static final String TABLES_DIRECTORY = "tbl/";
+  private static final String ZONES_DIRECTORY = "z/";
+  private static final String TOKENS_DIRECTORY = "t/";
+  private static final String MACROS_DIRECTORY = "m/";
+
+  private static final String TABLE_FILE_PREFIX = "";
+  private static final String ZONE_FILE_PREFIX = "";
+  private static final String TOKEN_FILE_PREFIX = "";
+  private static final String MACRO_FILE_PREFIX = "";
+
+  private static final String TABLE_FILE_SUFFIX = ".tbl";
+  private static final String ZONE_FILE_SUFFIX = ".zone";
+  private static final String TOKEN_FILE_SUFFIX = ".tok";
+  private static final String MACRO_FILE_SUFFIX = ".m";
+  private static final String MTSCRIPT_FILE_SUFFIX = ".mtscript";
+
   public static final String PROP_VERSION = "version"; // $NON-NLS-1$
   public static final String PROP_CAMPAIGN_VERSION = "campaignVersion"; // $NON-NLS-1$
   private static final String ASSET_DIR = "assets/"; // $NON-NLS-1$
   public static final String HERO_LAB = "herolab"; // $NON-NLS-1$
+
+  private static final Pattern PATTERN = Pattern.compile("[^A-Za-z0-9_\\-]");
 
   private static final String CAMPAIGN_VERSION = "1.4.1";
 
@@ -95,6 +105,9 @@ public class PersistenceUtil {
   private static final ModelVersionManager campaignVersionManager = new ModelVersionManager();
   private static final ModelVersionManager assetnameVersionManager = new ModelVersionManager();
   private static final ModelVersionManager tokenVersionManager = new ModelVersionManager();
+
+  // max name for each file path component that is checked
+  private static final int MAX_LENGTH = 50;
 
   static {
     PackedFile.init(AppUtil.getAppHome("tmp")); // $NON-NLS-1$
@@ -159,6 +172,32 @@ public class PersistenceUtil {
     public GUID currentZoneId;
     public Scale currentView;
     public String mapToolVersion;
+  }
+
+  public static class CampaignWrapper {
+    public Location exportLocation;
+    public Map<String, Boolean> exportSettings;
+    public int macroButtonLastIndex;
+    public Boolean hasUsedFogToolbar;
+    public GUID id;
+    public GUID currentZoneId;
+    public String mapToolVersion;
+    public List<MacroFileWrapper> macroFiles;
+  }
+
+  public static class ZoneWrapper {
+    public Zone zone;
+  }
+
+  public static class TokenWrapper {
+    public List<MacroFileWrapper> macroFiles;
+    public Token token;
+  }
+
+  public static class MacroFileWrapper {
+    public String macroFile;
+    public int index;
+    public String saveLocation;
   }
 
   public static void saveMap(Zone z, File mapFile) throws IOException {
@@ -249,6 +288,349 @@ public class PersistenceUtil {
       }
     }
     return n;
+  }
+
+  public static String joinFilePaths(String... paths) {
+    StringBuilder sb = new StringBuilder();
+    for (String path : paths) {
+      if (sb.toString().length() > 0
+          && !sb.toString().endsWith("/")
+          && !path.startsWith("/")
+          && path.length() > 0) {
+        sb.append("/");
+      }
+      sb.append(path);
+    }
+
+    return sb.toString();
+  }
+
+  public static void saveCampaign(
+      Campaign campaign, File campaignFile, String campaignVersion, boolean saveUnpackedAsDirectory)
+      throws IOException {
+    CodeTimer saveTimer; // FJE Previously this was 'private static' -- why?
+    saveTimer = new CodeTimer("CampaignSave");
+    saveTimer.setThreshold(5);
+    saveTimer.setEnabled(
+        log.isDebugEnabled()); // Don't bother keeping track if it won't be displayed...
+
+    // Strategy: save the file to a tmp location so that if there's a failure the original file
+    // won't be touched. Then once we're finished, replace the old with the new.
+    File tmpDir = AppUtil.getTmpDir();
+    File tmpFile = new File(tmpDir.getAbsolutePath(), campaignFile.getName());
+    if (tmpFile.exists()) tmpFile.delete();
+
+    if (campaignFile.isDirectory() && campaignFile.exists()) {
+      FileUtil.delete(campaignFile);
+    }
+
+    PackedFile pakFile = null;
+    try {
+      pakFile = new PackedFile(tmpFile);
+
+      // Configure the meta file (this is for legacy support)
+      PersistedCampaign persistedCampaign = new PersistedCampaign();
+      persistedCampaign.campaign = campaign;
+
+      // Keep track of the current view
+      ZoneRenderer currentZoneRenderer = MapTool.getFrame().getCurrentZoneRenderer();
+      if (currentZoneRenderer != null) {
+        persistedCampaign.currentZoneId = currentZoneRenderer.getZone().getId();
+        persistedCampaign.currentView = currentZoneRenderer.getZoneScale();
+      }
+      // Save all assets in active use (consolidate duplicates between maps)
+      saveTimer.start("Collect all assets");
+      Set<MD5Key> allAssetIds = campaign.getAllAssetIds();
+      for (MD5Key key : allAssetIds) {
+        // Put in a placeholder; all we really care about is the MD5Key for now...
+        persistedCampaign.assetMap.put(key, null);
+      }
+      saveTimer.stop("Collect all assets");
+
+      // And store the asset elsewhere
+      saveTimer.start("Save assets");
+      saveAssets(allAssetIds, pakFile);
+      saveTimer.stop("Save assets");
+
+      try {
+        saveTimer.start("Set content");
+
+        // If we are exporting the campaign, we will strip classes/fields that were added since the
+        // specified campaignVersion
+        if (campaignVersion != null) {
+          pakFile = CampaignExport.stripContent(pakFile, persistedCampaign, campaignVersion);
+        }
+
+        // save in new splitted file format
+        // if not exporting to an old version that used the content.xml file
+        if (campaignVersion == null || !pakFile.hasFile(PackedFile.CONTENT_FILE)) {
+          pakFile.putFile("assetMap.xml", persistedCampaign.assetMap);
+          pakFile.putFile("currentView.xml", persistedCampaign.currentView);
+
+          pakFile.getXStream().omitField(Campaign.class, "zones");
+          pakFile.getXStream().omitField(Campaign.class, "macroButtonProperties");
+          pakFile.getXStream().omitField(CampaignProperties.class, "characterSheets");
+          pakFile.getXStream().omitField(CampaignProperties.class, "lookupTableMap");
+          pakFile.putFile("characterSheets.xml", persistedCampaign.campaign.getCharacterSheets());
+          pakFile.putFile(
+              "campaignProperties.xml", persistedCampaign.campaign.getCampaignProperties());
+
+          // save tables
+          for (Map.Entry<String, LookupTable> tableEntry :
+              persistedCampaign.campaign.getLookupTableMap().entrySet()) {
+            String tableFile =
+                joinFilePaths(
+                    TABLES_DIRECTORY,
+                    TABLE_FILE_PREFIX + fixFileName(tableEntry.getKey()) + TABLE_FILE_SUFFIX);
+            pakFile.putFile(tableFile, tableEntry.getValue());
+          }
+
+          // save campaign macros
+          List<MacroFileWrapper> macroFilesWrapper = new LinkedList<MacroFileWrapper>();
+          pakFile.getXStream().omitField(MacroButtonProperties.class, "command");
+          for (MacroButtonProperties macro :
+              persistedCampaign.campaign.getMacroButtonProperties()) {
+            String macroFile =
+                joinFilePaths(
+                    MACROS_DIRECTORY,
+                    fixFileName(macro.getLabel()) + "_" + macro.getMacroUUID() + MACRO_FILE_SUFFIX);
+            String macroContentFile =
+                joinFilePaths(
+                    MACROS_DIRECTORY,
+                    MACRO_FILE_PREFIX
+                        + fixFileName(macro.getLabel())
+                        + "_"
+                        + macro.getMacroUUID()
+                        + MTSCRIPT_FILE_SUFFIX);
+            MacroFileWrapper macroFileWrapper = new MacroFileWrapper();
+            macroFileWrapper.index = macro.getIndex();
+            macroFileWrapper.saveLocation = macro.getSaveLocation();
+            macroFileWrapper.macroFile = macroFile;
+            macroFilesWrapper.add(macroFileWrapper);
+            pakFile.putFile(macroFile, macro);
+            if (macro.getCommand() != null) {
+              pakFile.putFileAsString(macroContentFile, macro.getCommand().toString());
+            }
+          }
+
+          pakFile.getXStream().omitField(Zone.class, "tokenOrderedList");
+          pakFile.getXStream().omitField(Zone.class, "tokenMap");
+          pakFile.getXStream().omitField(Token.class, "macroPropertiesMap");
+          pakFile.getXStream().omitField(Token.class, "macroMap");
+
+          // save zone
+          for (Zone zone : persistedCampaign.campaign.getZones()) {
+            String zonePath =
+                joinFilePaths(
+                    ZONES_DIRECTORY,
+                    fixFileName(zone.getName()) + "_" + fixFileName(zone.getId().toString()));
+
+            // save tokens in zone
+            List<String> tokenFiles = new LinkedList<String>();
+            for (Token token : zone.getAllTokens()) {
+              String tokenPath =
+                  joinFilePaths(
+                      TOKENS_DIRECTORY,
+                      fixFileName(token.getName()) + "_" + fixFileName(token.getId().toString()));
+              String tokenFile =
+                  joinFilePaths(
+                      zonePath,
+                      tokenPath,
+                      TOKEN_FILE_PREFIX + fixFileName(token.getName()) + TOKEN_FILE_SUFFIX);
+              tokenFiles.add(tokenFile);
+
+              // save token macros
+              List<MacroFileWrapper> tokenMacroFiles = new LinkedList<MacroFileWrapper>();
+              for (Map.Entry<Integer, Object> macroEntry :
+                  token.getMacroPropertiesMap(false).entrySet()) {
+                MacroButtonProperties macro = (MacroButtonProperties) macroEntry.getValue();
+                String macroFile =
+                    joinFilePaths(
+                        zonePath,
+                        tokenPath,
+                        MACROS_DIRECTORY,
+                        MACRO_FILE_PREFIX
+                            + fixFileName(macro.getLabel())
+                            + "_"
+                            + macro.getMacroUUID()
+                            + MACRO_FILE_SUFFIX);
+                String macroContentFile =
+                    joinFilePaths(
+                        zonePath,
+                        tokenPath,
+                        MACROS_DIRECTORY,
+                        MACRO_FILE_PREFIX
+                            + fixFileName(macro.getLabel())
+                            + "_"
+                            + macro.getMacroUUID()
+                            + MTSCRIPT_FILE_SUFFIX);
+                MacroFileWrapper tokenMacroFileWrapper = new MacroFileWrapper();
+                tokenMacroFileWrapper.index = macro.getIndex();
+                tokenMacroFileWrapper.saveLocation = macro.getSaveLocation();
+                tokenMacroFileWrapper.macroFile = macroFile;
+                tokenMacroFiles.add(tokenMacroFileWrapper);
+                pakFile.putFile(macroFile, macro);
+                if (macro.getCommand() != null) {
+                  pakFile.putFileAsString(macroContentFile, macro.getCommand().toString());
+                }
+              }
+
+              TokenWrapper tokenWrapper = new TokenWrapper();
+              tokenWrapper.macroFiles = tokenMacroFiles;
+              tokenWrapper.token = token;
+              pakFile.putFile(tokenFile, tokenWrapper);
+            }
+
+            String zoneFile =
+                joinFilePaths(
+                    zonePath, ZONE_FILE_PREFIX + fixFileName(zone.getName()) + ZONE_FILE_SUFFIX);
+            ZoneWrapper zoneWrapper = new ZoneWrapper();
+            zoneWrapper.zone = zone;
+
+            pakFile.putFile(zoneFile, zoneWrapper);
+          }
+
+          CampaignWrapper campaignWrapper = new CampaignWrapper();
+          campaignWrapper.mapToolVersion = persistedCampaign.mapToolVersion;
+          campaignWrapper.currentZoneId = persistedCampaign.currentZoneId;
+          campaignWrapper.exportLocation = persistedCampaign.campaign.getExportLocation();
+          campaignWrapper.exportSettings = persistedCampaign.campaign.getExportSettings();
+          campaignWrapper.macroButtonLastIndex =
+              persistedCampaign.campaign.getMacroButtonLastIndex();
+          campaignWrapper.hasUsedFogToolbar = persistedCampaign.campaign.getHasUsedFogToolbar();
+          campaignWrapper.macroFiles = macroFilesWrapper;
+          pakFile.putFile("campaign.xml", campaignWrapper);
+
+          pakFile.setProperty(PROP_CAMPAIGN_VERSION, CAMPAIGN_VERSION);
+          pakFile.setProperty(PROP_VERSION, MapTool.getVersion());
+        }
+
+        saveTimer.stop("Set content");
+        saveTimer.start("Save");
+        pakFile.save();
+
+        saveTimer.stop("Save");
+      } catch (OutOfMemoryError oom) {
+        /*
+         * This error is normally because the heap space has been exceeded while trying to save the campaign. Since MapTool caches the images used by the current Zone, and since the
+         * VersionManager must keep the XML for objects in memory in order to apply transforms to them, the memory usage can spike very high during the save() operation. A common solution is
+         * to switch to an empty map and perform the save from there; this causes MapTool to unload any images that it may have had cached and this can frequently free up enough memory for the
+         * save() to work. We'll tell the user all this right here and then fail the save and they can try again.
+         */
+        saveTimer.start("OOM Close");
+        pakFile.close(); // Have to close the tmpFile first on some OSes
+        pakFile = null;
+        tmpFile.delete(); // Delete the temporary file
+        saveTimer.stop("OOM Close");
+        if (log.isDebugEnabled()) {
+          log.debug(saveTimer);
+        }
+        MapTool.showError("msg.error.failedSaveCampaignOOM");
+        return;
+      }
+    } finally {
+      saveTimer.start("Close");
+      try {
+        if (pakFile != null) pakFile.close();
+      } catch (Exception e) {
+      }
+      saveTimer.stop("Close");
+      pakFile = null;
+    }
+
+    /*
+     * Copy to the new location. Not the fastest solution in the world if renameTo() fails, but worth the safety net it provides. Jamz: So, renameTo() is causing more issues than it is worth. It
+     * has a tendency to lock a file under Google Drive/Drop box causing the save to fail. Removed the for final save location...
+     */
+    saveTimer.start("Backup");
+    File bakFile = new File(tmpDir.getAbsolutePath(), campaignFile.getName() + ".bak");
+
+    bakFile.delete(); // Delete the last backup file...
+
+    if (campaignFile.exists()) {
+      saveTimer.start("Backup campaignFile");
+
+      if (campaignFile.isDirectory()) {
+        campaignFile.renameTo(bakFile);
+      } else {
+        FileUtil.copyFile(campaignFile, bakFile);
+      }
+      // campaignFile.delete();
+      saveTimer.stop("Backup campaignFile");
+    }
+
+    saveTimer.start("Backup tmpFile");
+
+    if (saveUnpackedAsDirectory) {
+      unpack(tmpFile, campaignFile);
+    } else {
+      FileUtil.copyFile(tmpFile, campaignFile);
+    }
+    tmpFile.delete();
+    saveTimer.stop("Backup tmpFile");
+    if (bakFile.exists()) bakFile.delete();
+    saveTimer.stop("Backup");
+
+    // Save the campaign thumbnail
+    saveTimer.start("Thumbnail");
+    saveCampaignThumbnail(campaignFile.getName());
+    saveTimer.stop("Thumbnail");
+
+    if (log.isDebugEnabled()) {
+      log.debug(saveTimer);
+    }
+  }
+
+  public static void unpack(File src, File dest) throws IOException {
+    byte[] buffer = new byte[1024];
+    ZipInputStream zis = null;
+
+    if (!dest.exists()) {
+      dest.mkdirs();
+    }
+
+    try {
+      zis = new ZipInputStream(new FileInputStream(src));
+      ZipEntry zipEntry = zis.getNextEntry();
+      while (zipEntry != null) {
+        File newFile = newFile(dest, zipEntry);
+        if (!newFile.getParentFile().exists()) {
+          newFile.getParentFile().mkdirs();
+        }
+        FileOutputStream fos = new FileOutputStream(newFile);
+        int len;
+        while ((len = zis.read(buffer)) > 0) {
+          fos.write(buffer, 0, len);
+        }
+        fos.close();
+        zipEntry = zis.getNextEntry();
+      }
+    } finally {
+      if (zis != null) {
+        zis.closeEntry();
+        zis.close();
+      }
+    }
+  }
+
+  public static String fixFileName(String in) {
+
+    StringBuffer sb = new StringBuffer();
+    Matcher m = PATTERN.matcher(in);
+
+    while (m.find()) {
+      // Convert matched character to percent-encoded.
+      // which is everything that is not allowed
+      String replacement = "_"; // "%" + Integer.toHexString(m.group().charAt(0)).toUpperCase();
+      m.appendReplacement(sb, replacement);
+    }
+    m.appendTail(sb);
+
+    String encoded = sb.toString();
+
+    // Truncate the string.
+    int end = Math.min(encoded.length(), MAX_LENGTH);
+    return encoded.substring(0, end);
   }
 
   public static void saveCampaign(Campaign campaign, File campaignFile, String campaignVersion)
@@ -369,6 +751,19 @@ public class PersistenceUtil {
     if (log.isDebugEnabled()) {
       log.debug(saveTimer);
     }
+  }
+
+  private static File newFile(File destinationDir, ZipEntry zipEntry) throws IOException {
+    File destFile = new File(destinationDir, zipEntry.getName());
+
+    String destDirPath = destinationDir.getCanonicalPath();
+    String destFilePath = destFile.getCanonicalPath();
+
+    if (!destFilePath.startsWith(destDirPath + File.separator)) {
+      throw new IOException("Entry is outside of the target dir: " + zipEntry.getName());
+    }
+
+    return destFile;
   }
 
   /*

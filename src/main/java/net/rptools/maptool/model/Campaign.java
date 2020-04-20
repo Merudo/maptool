@@ -678,7 +678,27 @@ public class Campaign {
     return campaignExportDialog;
   }
 
+  public List<MacroButtonProperties> getMacroButtonProperties() {
+    return macroButtonProperties;
+  }
+
   public void setExportCampaignDialog(CampaignExportDialog d) {
     campaignExportDialog = d;
+  }
+
+  public Location getExportLocation() {
+    return exportLocation;
+  }
+
+  public Map<String, Boolean> getExportSettings() {
+    return exportSettings;
+  }
+
+  public int getMacroButtonLastIndex() {
+    return macroButtonLastIndex;
+  }
+
+  public Boolean getHasUsedFogToolbar() {
+    return hasUsedFogToolbar;
   }
 }

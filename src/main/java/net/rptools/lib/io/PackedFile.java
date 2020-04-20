@@ -94,7 +94,7 @@ import org.apache.logging.log4j.Logger;
 public class PackedFile implements AutoCloseable {
 
   private static final String PROPERTY_FILE = "properties.xml";
-  private static final String CONTENT_FILE = "content.xml";
+  public static final String CONTENT_FILE = "content.xml";
 
   private static final Logger log = LogManager.getLogger(PackedFile.class);
 
@@ -520,6 +520,23 @@ public class PackedFile implements AutoCloseable {
   private ZipFile getZipFile() throws IOException {
     if (zFile == null) zFile = new ZipFile(file);
     return zFile;
+  }
+
+  /**
+   * Write the String to the given path in the ZIP file; character set encoding will take place as
+   * the data is written to the (temporary) file.
+   *
+   * @param path location within the ZIP file
+   * @param content the object to be written
+   * @throws IOException
+   */
+  public void putFileAsString(String path, String content) throws IOException {
+    File explodedFile = putFileImpl(path);
+    FileOutputStream fos = new FileOutputStream(explodedFile);
+    OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
+    BufferedWriter bw = new BufferedWriter(osw);
+    bw.append(content);
+    IOUtils.closeQuietly(bw);
   }
 
   /**
