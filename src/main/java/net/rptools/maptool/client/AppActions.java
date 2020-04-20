@@ -2542,7 +2542,7 @@ public class AppActions {
     // probably simpler to set AppState.isSaving() out here on the EDT...
     new SwingWorker<Object, Object>() {
       @Override
-      protected Object doInBackground() throws Exception {
+      protected Object doInBackground() {
         synchronized (MapTool.getAutoSaveManager()) {
           if (AppState.isSaving()) {
             return "Campaign currently being auto-saved.  Try again later."; // string error message
@@ -2552,7 +2552,7 @@ public class AppActions {
         }
         try {
           long start = System.currentTimeMillis();
-          PersistenceUtil.saveCampaign(campaign, file, campaignVersion);
+          PersistenceUtil.saveCampaign(campaign, file, campaignVersion, true);
           AppMenuBar.getMruManager().addMRUCampaign(AppState.getCampaignFile());
           MapTool.getFrame().setStatusMessage(I18N.getString("msg.info.campaignSaved"));
 
