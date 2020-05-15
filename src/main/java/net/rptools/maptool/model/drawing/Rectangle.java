@@ -68,9 +68,9 @@ public class Rectangle extends AbstractDrawing {
     int height = Math.abs(startPoint.y - endPoint.y);
 
     Object oldAA = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
     g.drawRect(minX, minY, width, height);
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAA);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 
   @Override
@@ -82,8 +82,8 @@ public class Rectangle extends AbstractDrawing {
     int height = Math.abs(startPoint.y - endPoint.y);
 
     Object oldAA = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
     g.fillRect(minX, minY, width, height);
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAA);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 }

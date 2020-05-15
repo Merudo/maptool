@@ -67,12 +67,11 @@ public class ShapeDrawable extends AbstractDrawing {
   private Object applyAA(Graphics2D g) {
     Object oldAA = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
     g.setRenderingHint(
-        RenderingHints.KEY_ANTIALIASING,
-        useAntiAliasing ? RenderingHints.VALUE_ANTIALIAS_ON : RenderingHints.VALUE_ANTIALIAS_OFF);
+        RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
     return oldAA;
   }
 
   private void restoreAA(Graphics2D g, Object oldAA) {
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAA);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 }

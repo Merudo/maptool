@@ -236,7 +236,7 @@ public class AdvancedAdjustGridPanel extends JComponent
         right + imagePosition.x,
         imagePosition.y + imageSize.height + handleSize);
 
-    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldValue);
+    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 
   @Override

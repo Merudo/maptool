@@ -434,7 +434,7 @@ public abstract class HexGrid extends Grid {
         setGridDrawTranslation(g, -(u + offsetU), -v);
       }
     }
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAntiAlias);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 
   /**

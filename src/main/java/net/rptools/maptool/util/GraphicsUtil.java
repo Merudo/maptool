@@ -350,7 +350,7 @@ public class GraphicsUtil {
     g2.setClip(newClip);
     g2.setRenderingHint(
         RenderingHints.KEY_ANTIALIASING,
-        RenderingHints.VALUE_ANTIALIAS_OFF); // Faster without antialiasing, and looks just as good
+        RenderingHints.VALUE_ANTIALIAS_ON); // Faster without antialiasing, and looks just as good
 
     // float alpha = (float)initialAlpha / width / 6;
     float alpha = .04f;

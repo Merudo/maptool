@@ -80,7 +80,7 @@ public class SwingUtil {
    * @param oldAA the value returned from useAntiAliasing
    */
   public static void restoreAntiAliasing(Graphics2D g, Object oldAA) {
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAA);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 
   public static void centerOnScreen(Window window) {

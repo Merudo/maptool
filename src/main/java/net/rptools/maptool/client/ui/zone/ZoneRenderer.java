@@ -2678,7 +2678,7 @@ public class ZoneRenderer extends JComponent
       g.draw(shape2);
     }
 
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldRendering);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
   }
 
   public void drawText(String text, int x, int y) {
@@ -2993,6 +2993,12 @@ public class ZoneRenderer extends JComponent
 
   protected void renderTokens(
       Graphics2D g, List<Token> tokenList, PlayerView view, boolean figuresOnly) {
+
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+    g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+
     Graphics2D clippedG = g;
     boolean isGMView = view.isGMView(); // speed things up
 

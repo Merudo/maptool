@@ -238,7 +238,7 @@ public class ImagePanel extends JComponent
                 RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
           } else if (dim.width > image.getWidth(null) || dim.height > image.getHeight(null)) {
             g.setRenderingHint(
-                RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
           }
           g.drawImage(
               image,

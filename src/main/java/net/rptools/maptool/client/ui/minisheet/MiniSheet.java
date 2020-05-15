@@ -95,7 +95,7 @@ public class MiniSheet {
       y += fm.getHeight() + 3;
     }
 
-    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAAHint);
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
     g.setClip(oldClip);
   }
 }
