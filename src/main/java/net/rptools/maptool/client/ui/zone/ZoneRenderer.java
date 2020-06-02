@@ -139,6 +139,7 @@ import net.rptools.maptool.model.drawing.DrawnElement;
 import net.rptools.maptool.model.drawing.Pen;
 import net.rptools.maptool.util.GraphicsUtil;
 import net.rptools.maptool.util.ImageManager;
+import net.rptools.maptool.util.Resizer;
 import net.rptools.maptool.util.StringUtil;
 import net.rptools.maptool.util.TokenUtil;
 import net.rptools.parser.ParserException;
@@ -2357,24 +2358,22 @@ public class ZoneRenderer extends JComponent
                   - token.getAnchor().y * scale
                   - offsety); // facing defaults to down, or -90 degrees
         }
+        double scaleX = 1;
+        double scaleY = 1;
         if (token.isSnapToScale()) {
-          at.scale(
-              (double) imgSize.width / workImage.getWidth(),
-              (double) imgSize.height / workImage.getHeight());
-          at.scale(getScale(), getScale());
+          scaleX = (double) imgSize.width / workImage.getWidth() * getScale();
+          scaleY = (double) imgSize.height / workImage.getHeight() * getScale();
         } else {
           if (token.getShape() == TokenShape.FIGURE) {
-            at.scale(
-                (double) scaledWidth / workImage.getWidth(),
-                (double) scaledWidth / workImage.getWidth());
+            scaleX = (double) scaledWidth / workImage.getWidth();
+            scaleY = (double) scaledWidth / workImage.getWidth();
           } else {
-            at.scale(
-                (double) scaledWidth / workImage.getWidth(),
-                (double) scaledHeight / workImage.getHeight());
+            scaleX = (double) scaledWidth / workImage.getWidth();
+            scaleY = (double) scaledHeight / workImage.getHeight();
           }
         }
 
-        g.drawImage(workImage, at, this);
+        Resizer.drawImageProgressive(g, workImage, at, scaleX, scaleY, this);
 
         // Other details
         if (token == keyToken) {
@@ -2790,7 +2789,8 @@ public class ZoneRenderer extends JComponent
 
     AffineTransform backup = g.getTransform();
 
-    g.drawImage(
+    Resizer.drawImageProgressive(
+        g,
         image,
         (int) (sp.x - iwidth / 2),
         (int) (sp.y - iheight / 2),
@@ -3313,20 +3313,18 @@ public class ZoneRenderer extends JComponent
         // facing defaults to down, or -90 degrees
       }
       // Draw the token
+      double scaleX = 1;
+      double scaleY = 1;
       if (token.isSnapToScale()) {
-        at.scale(
-            ((double) imgSize.width) / workImage.getWidth(),
-            ((double) imgSize.height) / workImage.getHeight());
-        at.scale(getScale(), getScale());
+        scaleX = (double) imgSize.width / workImage.getWidth() * getScale();
+        scaleY = (double) imgSize.height / workImage.getHeight() * getScale();
       } else {
         if (token.getShape() == TokenShape.FIGURE) {
-          at.scale(
-              (double) scaledWidth / workImage.getWidth(),
-              (double) scaledWidth / workImage.getWidth());
+          scaleX = scaledWidth / workImage.getWidth();
+          scaleY = scaledWidth / workImage.getWidth();
         } else {
-          at.scale(
-              (double) scaledWidth / workImage.getWidth(),
-              (double) scaledHeight / workImage.getHeight());
+          scaleX = scaledWidth / workImage.getWidth();
+          scaleY = scaledHeight / workImage.getHeight();
         }
       }
       timer.stop("tokenlist-6");
@@ -3348,14 +3346,14 @@ public class ZoneRenderer extends JComponent
           // the cell intersects visible area so
           if (zone.getGrid().checkCenterRegion(cb.getBounds(), visibleScreenArea)) {
             // if we can see the centre, draw the whole token
-            tokenG.drawImage(workImage, at, this);
+            Resizer.drawImageProgressive(tokenG, workImage, at, scaleX, scaleY, this);
             // g.draw(cb); // debugging
           } else {
             // else draw the clipped token
             Area cellArea = new Area(visibleScreenArea);
             cellArea.intersect(cb);
             tokenG.setClip(cellArea);
-            tokenG.drawImage(workImage, at, this);
+            Resizer.drawImageProgressive(tokenG, workImage, at, scaleX, scaleY, this);
           }
         }
       } else if (!isGMView && zoneView.isUsingVision() && token.isAlwaysVisible()) {
@@ -3365,7 +3363,7 @@ public class ZoneRenderer extends JComponent
           // if we can see a portion of the stamp/token, draw the whole thing, defaults to 2/9ths
           if (zone.getGrid()
               .checkRegion(cb.getBounds(), visibleScreenArea, token.getAlwaysVisibleTolerance())) {
-            tokenG.drawImage(workImage, at, this);
+            Resizer.drawImageProgressive(tokenG, workImage, at, scaleX, scaleY, this);
           } else {
             // else draw the clipped stamp/token
             // This will only show the part of the token that does not have VBL on it
@@ -3373,11 +3371,11 @@ public class ZoneRenderer extends JComponent
             Area cellArea = new Area(visibleScreenArea);
             cellArea.intersect(cb);
             tokenG.setClip(cellArea);
-            tokenG.drawImage(workImage, at, this);
+            Resizer.drawImageProgressive(tokenG, workImage, at, scaleX, scaleY, this);
           }
         }
       } else {
-        tokenG.drawImage(workImage, at, this);
+        Resizer.drawImageProgressive(tokenG, workImage, at, scaleX, scaleY, this);
       }
       timer.stop("tokenlist-7");
 
@@ -3421,7 +3419,7 @@ public class ZoneRenderer extends JComponent
             tokenG.translate(-fx, -fy);
             break;
           case TOP_DOWN:
-            if (AppPreferences.getForceFacingArrow() == false) {
+            if (!AppPreferences.getForceFacingArrow()) {
               break;
             }
           case CIRCLE:
